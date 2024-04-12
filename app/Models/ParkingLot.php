@@ -22,8 +22,4 @@ class ParkingLot extends Model
         return $this->hasMany(ParkingSlot::class);
     }
 
-    public function parkingReports()
-    {
-        return $this->hasMany(ParkingReport::class);
-    }
 }

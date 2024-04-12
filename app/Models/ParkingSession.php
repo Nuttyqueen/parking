@@ -15,7 +15,7 @@ class ParkingSession extends Model
     protected $primaryKey = "id";
 
     protected $fillable = [
-        "check_in_time","check_out_time","total_cost","parking_slot_id","card_id"
+        "check_in_time","check_out_time","parking_slot_id","card_id"
     ];
     public function parkingSlots()
     {
