@@ -71,6 +71,8 @@ class ReportController extends Controller
                 }
             }
         }
+        ksort($dailyReport);
+        ksort($weeklyReport);
 
         return response()->json([
             'parking_lot' => $parkingLot,
