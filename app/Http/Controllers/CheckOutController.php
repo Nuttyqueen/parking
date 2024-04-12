@@ -1,11 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
-
 use App\Models\ParkingSession;
 use App\Models\ParkingSlot;
-use App\Models\Parkinglot;
-
 use Carbon\Carbon;
 
 class CheckOutController extends Controller
@@ -23,18 +20,18 @@ class CheckOutController extends Controller
     {
         $startTime = Carbon::parse($startTime);
         $endTime = Carbon::parse($endTime);
-
-        if ($startTime->gt($endTime)) {
-            return [
-                'error' => 'Invalid entry and exit times',
-            ];
+        if ($endTime->lt($startTime)) {
+            return ['error' => 'Invalid entry and exit times'];
         }
+
         // คำนวณระยะเวลาการจอดรถ (นาที)
-        $parkingDurationMinutes = $startTime->diffInMinutes($endTime);
+        $parkingDurationMinutes = $endTime->diffInMinutes($startTime);
 
         // หักลด Freetime นาทีแรก
-        if ($parkingDurationMinutes > 0) {
+        if ($parkingDurationMinutes > $freeTimeMinutes) {
             $parkingDurationMinutes -= $freeTimeMinutes;
+        } else {
+            $parkingDurationMinutes = 0;
         }
 
         // คำนวณจำนวนช่วง
@@ -42,7 +39,6 @@ class CheckOutController extends Controller
 
         // คิดเงิน
         $parkingFee = $numIntervals * $pricePerHour;
-
         return $parkingFee;
     }
     public function checkOut()
@@ -86,5 +82,4 @@ class CheckOutController extends Controller
             ]);
         }
     }
-
 }
