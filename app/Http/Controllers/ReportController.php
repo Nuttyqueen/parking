@@ -1,32 +1,27 @@
 <?php
 
 namespace App\Http\Controllers;
-
-use App\Models\Card;
-use App\Models\ParkingSession;
-use App\Models\ParkingSlot;
 use App\Models\Parkinglot;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
-    function calculateParking($startTime, $endTime, $freeTimeMinutes, $pricePerHour)
-    {
+    function calculateParking($startTime, $endTime, $freeTimeMinutes, $pricePerHour) {
         $startTime = Carbon::parse($startTime);
         $endTime = Carbon::parse($endTime);
-
-        if ($startTime->gt($endTime)) {
-            return [
-                'error' => 'Invalid entry and exit times',
-            ];
+        if ($endTime->lt($startTime)) {
+            return ['error' => 'Invalid entry and exit times'];
         }
+
         // คำนวณระยะเวลาการจอดรถ (นาที)
-        $parkingDurationMinutes = $startTime->diffInMinutes($endTime);
+        $parkingDurationMinutes = $endTime->diffInMinutes($startTime);
 
         // หักลด Freetime นาทีแรก
-        if ($parkingDurationMinutes > 0) {
+        if ($parkingDurationMinutes > $freeTimeMinutes) {
             $parkingDurationMinutes -= $freeTimeMinutes;
+        } else {
+            $parkingDurationMinutes = 0;
         }
 
         // คำนวณจำนวนช่วง
@@ -34,28 +29,18 @@ class ReportController extends Controller
 
         // คิดเงิน
         $parkingFee = $numIntervals * $pricePerHour;
-
         return $parkingFee;
     }
 
-
     public function report(Request $request) {
         $parkingLotId = $request->input('parking_lot_id');
-        $parkingLot = ParkingLot::find($parkingLotId);
+        $parkingLot = Parkinglot::find($parkingLotId);
         $parkingSlots = $parkingLot->parkingSlots()->with('parkingSessions')->get();
-
         $dailyReport = [];
-        $dayReport = [];
-        $weeklyReport = array_fill_keys(range(1, 52), 0);
-        $monthlyReport = array_fill_keys(range(1, 12), 0);
+        $weeklyReport = [];
+        $monthlyReport = array_fill(1, 12, 0);
 
         foreach ($parkingSlots as $slot) {
-            $slotDailyReport = [
-                'slot' => $slot->slot_number . '' . $slot->slot_code,
-                'total_revenue' => 0,
-                'total_sessions' => 0,
-            ];
-
             foreach ($slot->parkingSessions as $session) {
                 if ($session->check_out_time) {
                     $sessionFee = $this->calculateParking(
@@ -65,41 +50,33 @@ class ReportController extends Controller
                         $parkingLot->price_per_hour
                     );
 
-                    $slotDailyReport['total_revenue'] += $sessionFee;
-                    $slotDailyReport['total_sessions']++;
-                    $slotDailyReport['timestart']= $session->check_in_time;
-                    $slotDailyReport['timeend']= $session->check_out_time;
+                    $checkoutDate = Carbon::parse($session->check_out_time);
+                    $checkoutDateKey = $checkoutDate->format('Y-m-d');
 
-
-                    $today = Carbon::today();
-
-                    // ตรวจสอบว่าเช็คเอาท์ในวันนี้หรือไม่
-                    if ($today->format('Y-m-d') === Carbon::parse($session->check_out_time)->format('Y-m-d')) {
-                        $weekNumber = $today->weekOfYear;
-
-                        // ตรวจสอบว่ามี index ในอาร์เรย์หรือไม่ ถ้าไม่มีกำหนดค่าเริ่มต้นเป็น 0
-                        if (!isset($dayReport[$weekNumber])) {
-                            $dayReport[$weekNumber] = 0;
-                        }
-
-                        $dayReport[$weekNumber] += $sessionFee;
+                    if (!isset($dailyReport[$checkoutDateKey])) {
+                        $dailyReport[$checkoutDateKey] = [
+                            'total_revenue' => $sessionFee,
+                            'total_sessions' => 1,
+                        ];
+                    } else {
+                        $dailyReport[$checkoutDateKey]['total_revenue'] += $sessionFee;
+                        $dailyReport[$checkoutDateKey]['total_sessions']++;
                     }
 
-                    $weekNumber = Carbon::parse($session->check_out_time)->weekOfYear;
-                    $weeklyReport[$weekNumber] += $sessionFee;
+                    $weekNumber = $checkoutDate->weekOfYear;
+                    $weeklyReport[$weekNumber] = ($weeklyReport[$weekNumber] ?? 0) + $sessionFee;
 
-                    $monthNumber = Carbon::parse($session->check_out_time)->month;
+                    $monthNumber = $checkoutDate->month;
                     $monthlyReport[$monthNumber] += $sessionFee;
                 }
             }
-
-            $dailyReport[] = $slotDailyReport;
         }
-
+        ksort($dailyReport);
+        ksort($weeklyReport);
 
         return response()->json([
             'parking_lot' => $parkingLot,
-            'dayReport' => $dayReport,
+            'daily_report' => $dailyReport,
             'weekly_report' => $weeklyReport,
             'monthly_report' => $monthlyReport,
         ]);
